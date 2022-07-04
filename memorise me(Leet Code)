@@ -1,0 +1,36 @@
+import java.util.Scanner;
+class Memorise{
+	public static void main (String[]args){
+	 	Scanner sc=new Scanner(System.in);
+		int n=sc.nextInt();
+		int array[]=new int[n];
+		for(int i=0;i<n;i++)
+		{
+		   array[i]=sc.nextInt();
+		}
+		int test=sc.nextInt();
+		
+		for(int k=0;k<test;k++)
+		{
+			int num=sc.nextInt();
+			int counter=0;
+			for(int i=0;i<n;i++)
+			{
+				if(num==array[i])
+				{
+					counter++;
+;				}
+			}
+			if(counter==0)
+			{
+				System.out.println("NOT PRESENT");
+			}
+             else	
+			 {
+				 System.out.println(counter);
+			 }				 
+		}
+		
+	}
+	
+}
