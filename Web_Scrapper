@@ -1,0 +1,49 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+from google.colab import files
+
+def scrape_website(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, 'html.parser')
+        data = []
+        items = soup.find_all('div', class_='location-item')
+        for item in items:
+            name = item.find('h2', class_='name').text.strip()
+            address = item.find('p', class_='address').text.strip()
+            lat_long = item.find('span', class_='lat-long').text.strip()
+            phone = item.find('p', class_='phone').text.strip()
+            data.append({
+                'Name': name,
+                'Address': address,
+                'Latitude-Longitude': lat_long,
+                'Phone': phone
+            })
+        return data
+    else:
+        print(f"Failed to retrieve the webpage: {url}")
+        return None
+
+def save_to_csv(data, filename):
+    if data:
+        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['Name', 'Address', 'Latitude-Longitude', 'Phone']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for entry in data:
+                writer.writerow(entry)
+        print(f"Data has been scraped and saved to {filename}")
+        # Download the file to local machine
+        files.download(filename)
+    else:
+        print("No data to save.")
+
+# Example usage:
+if __name__ == "__main__":
+    url_to_scrape = "https://example.com/locations"
+    scraped_data = scrape_website(url_to_scrape)
+    if scraped_data:
+        save_to_csv(scraped_data, 'scraped_data.csv')
+    else:
+        print("No data scraped.")
