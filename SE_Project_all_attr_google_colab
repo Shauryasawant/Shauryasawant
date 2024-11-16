@@ -6,7 +6,7 @@ import time
 from fuzzywuzzy import fuzz
 from datetime import datetime, timedelta
 
-API_KEY = 'Your_Google_Maps_API_Key'
+API_KEY = 'AlzaSyKKVsqeEX6hU-765lQ7-zxTCBwKvk3NlUA'
 
 def get_place_details(place_id, api_key):
     """Get detailed place information including categories."""
