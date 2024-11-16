@@ -1,0 +1,192 @@
+import requests
+import pandas as pd
+from geopy.distance import geodesic
+from google.colab import files
+import time
+from fuzzywuzzy import fuzz
+from datetime import datetime, timedelta
+
+API_KEY = 'Your_Google_Maps_API_Key'
+
+def get_place_details(place_id, api_key):
+    """Get detailed place information including categories."""
+    url = "https://maps.gomaps.pro/maps/api/place/details/json"
+    query_params = {
+        "place_id": place_id,
+        "key": api_key,
+        "fields": "address_components,opening_hours,reviews,business_status,website,types"  # Added types
+    }
+
+    try:
+        response = requests.get(url, params=query_params)
+        data = response.json()
+
+        if data.get('status') == 'OK':
+            result = data.get('result', {})
+            address_components = result.get('address_components', [])
+
+            state = None
+            county = None
+            city = None
+            postal_code = None
+
+            for component in address_components:
+                types = component.get('types', [])
+                if 'administrative_area_level_1' in types:
+                    state = component.get('short_name')
+                elif 'administrative_area_level_2' in types:
+                    county = component.get('long_name')
+                elif 'locality' in types:
+                    city = component.get('long_name')
+                elif 'postal_code' in types:
+                    postal_code = component.get('long_name')
+
+            return {
+                'state': state,
+                'county': county,
+                'city': city,
+                'postal_code': postal_code,
+                'business_status': result.get('business_status'),
+                'opening_hours': result.get('opening_hours', {}),
+                'reviews': result.get('reviews', []),
+                'website': result.get('website', ''),
+                'types': result.get('types', [])  # Added types to returned data
+            }
+
+    except Exception as e:
+        print(f"Error getting place details: {str(e)}")
+    return None
+
+def calculate_distances(api_key):
+    """Process POIs and verify their locations."""
+    print("Please upload your Excel file...")
+    uploaded = files.upload()
+
+    for file_name in uploaded.keys():
+        file_path = file_name
+
+    df = pd.read_excel(file_path)
+
+    required_columns = [
+        'is_(or was) this a place ?',
+        'Address Match Score',
+        'Address Match Details',
+        'Is it Active/Open?',
+        'Official Website',
+        '3rd Party',
+        'Comment',
+        'Potential Matches (60% Similar)',
+        'Category Match Score',  # New column
+        'Category Match Details',  # New column
+        'Matched Category'  # New column to store Google category types
+    ]
+
+    for col in required_columns:
+        df[col] = None
+
+    for idx, row in df.iterrows():
+        poi_name = row['poi_nm']
+        original_category = row.get('cat_nm', '')  # Get original category
+        print(f"\nProcessing: {poi_name}")
+
+        try:
+            lat_long = str(row['display_lat_long']).strip()
+            if ',' in lat_long:
+                origin_coords = tuple(map(float, lat_long.split(',')))
+            else:
+                origin_coords = tuple(map(float, lat_long.split()))
+        except Exception as e:
+            print(f"Error parsing coordinates for '{poi_name}': {str(e)}")
+            df.at[idx, 'Comment'] = "Invalid Coordinates"
+            continue
+
+        nearby_places = get_nearby_places(poi_name, origin_coords[0], origin_coords[1], api_key)
+
+        if nearby_places:
+            close_matches = []
+            potential_matches_60 = []
+
+            for place in nearby_places:
+                place_details = get_place_details(place['place_id'], api_key)
+                if place_details:
+                    name_match_score = calculate_match_score(poi_name, place['name'])
+
+                    # Get raw category types from Google
+                    google_types = place_details.get('types', [])
+                    matched_category = ', '.join(google_types)  # Store the exact Google categories
+
+                    # Optionally you can still compute category match score if needed
+                    # category_score, category_comment = check_category_match(original_category, google_types)
+
+                    address_score, address_comment = calculate_address_match_score(
+                        row['admin2'],
+                        row['admin4'],
+                        row['postal_code'],
+                        place_details
+                    )
+
+                    distance = geodesic(
+                        origin_coords,
+                        (place['geometry']['location']['lat'],
+                         place['geometry']['location']['lng'])
+                    ).meters
+
+                    if name_match_score >= 70:
+                        close_matches.append({
+                            'name': place['name'],
+                            'place_id': place['place_id'],
+                            'details': place_details,
+                            'distance': distance,
+                            'maps_link': create_google_maps_link(place_id=place['place_id']),
+                            'name_match_score': name_match_score,
+                            'address_score': address_score,
+                            'address_comment': address_comment,
+                            'matched_category': matched_category  # Save matched category
+                        })
+
+                    if name_match_score >= 60:
+                        potential_matches_60.append(f"{place['name']} ({round(distance)}m)")
+
+            if close_matches:
+                # Updated to consider category score in best match selection
+                best_match = max(close_matches,
+                               key=lambda x: (x['address_score'], x['name_match_score']))
+
+                df.at[idx, 'is_(or was) this a place ?'] = "Y" if best_match['address_score'] > 50 else "Unsure"
+                df.at[idx, 'Address Match Score'] = f"{best_match['address_score']}%"
+                df.at[idx, 'Address Match Details'] = best_match['address_comment']
+                df.at[idx, 'Is it Active/Open?'] = is_active(best_match['details'])
+                df.at[idx, 'Official Website'] = best_match['details'].get('website', '')
+                df.at[idx, '3rd Party'] = best_match['maps_link']
+                df.at[idx, 'Category Match Score'] = f"{best_match.get('category_score', '0')}%"
+                df.at[idx, 'Category Match Details'] = best_match.get('category_comment', 'No match')
+                df.at[idx, 'Matched Category'] = best_match['matched_category']  # Save the matched category in the new column
+                df.at[idx, 'Comment'] = (
+                    f"Found: {best_match['name']} at {round(best_match['distance'])}m. "
+                    f"Name match: {best_match['name_match_score']}%, "
+                    f"Category match: {best_match.get('category_score', '0')}%"
+                )
+                df.at[idx, 'Potential Matches (60% Similar)'] = ', '.join(potential_matches_60)
+
+                print(f"Processed {poi_name}: Found match with address score {best_match['address_score']}%")
+
+        else:
+            print(f"No matches found for {poi_name}")
+            df.at[idx, 'is_(or was) this a place ?'] = "N"
+            df.at[idx, 'Address Match Score'] = "0%"
+            df.at[idx, 'Address Match Details'] = "No matches found"
+            df.at[idx, 'Category Match Score'] = "0%"
+            df.at[idx, 'Category Match Details'] = "No matches found"
+            df.at[idx, 'Matched Category'] = "No matches found"  # Store the info in the new column
+            df.at[idx, 'Comment'] = "No matches found"
+            df.at[idx, 'Potential Matches (60% Similar)'] = "None"
+
+        time.sleep(1)
+
+    output_file = "poi_verification_results.xlsx"
+    df.to_excel(output_file, index=False)
+    print(f"\nResults saved to {output_file}")
+    files.download(output_file)
+
+# Run the verification
+calculate_distances(API_KEY)
