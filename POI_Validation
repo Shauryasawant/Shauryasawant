@@ -451,7 +451,7 @@ def get_place_details(place_id, api_key):
                 elif 'sublocality_level_1' in types or 'sublocality' in types:
                     admin5 = component.get('long_name')
 
-            maps_url = f"https://www.google.com/maps/place/?q=place_id:"
+            maps_url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
 
             if 'reviews' in result:
                 result['reviews'] = sorted(
