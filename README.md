@@ -9,5 +9,5 @@ I am a developer passionate about building intelligent applications and Data Ana
 ### 🧰 Tech Stack
 ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
 
-### 📊 Profile Viewe
-![[Shaurya's GitHub stats](https://github-readme-stats.vercel.app/api?username=Shauryasawant&show_icons=true&theme=radial)](https://wingz.itvedant.com/portfolio/shaurya-sawant-jan25-e323)
+### 📊 Profile View
+![[Shaurya's  stats](https://wingz.itvedant.com/portfolio/shaurya-sawant-jan25-e323)
